@@ -13,6 +13,7 @@ import lombok.NoArgsConstructor;
                 columnNames = {"user_id", "work_id"}
         )
 )
+
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class ShelfItem {

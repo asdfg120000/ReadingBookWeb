@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="ko">
+<head>
+    <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>내 서재 · 간단 실행 화면</title>
+    <style>
+        *{box-sizing:border-box}body{margin:0;background:#f5f3ee;color:#283b33;font:16px/1.6 system-ui,sans-serif}main{max-width:1050px;margin:auto;padding:32px 20px}h1{margin:0;font-size:32px}h2{font-size:19px;margin:0 0 14px}.intro{color:#64716b}.grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}.card{background:white;padding:24px;border:1px solid #e1e5dd;border-radius:16px}label{display:block;font-size:14px;margin:10px 0 4px}input,textarea,select{width:100%;padding:11px;border:1px solid #ccd4ce;border-radius:8px;font:inherit}textarea{min-height:110px;resize:vertical}button{border:0;border-radius:8px;background:#285b46;color:white;font:inherit;padding:10px 16px;cursor:pointer;margin:12px 6px 0 0}button.secondary{background:#e9eee9;color:#285b46}button.danger{background:#9f4545}button:disabled{opacity:.5;cursor:wait}.row{display:flex;gap:10px;flex-wrap:wrap}.item{margin:12px 0;padding:14px;background:#f6f7f3;border-radius:10px;white-space:pre-wrap;overflow-wrap:anywhere}.small{font-size:13px;color:#64716b}.pill{display:inline-block;background:#e6eee7;padding:5px 12px;border-radius:30px;margin:10px 0}#message{position:sticky;top:0;z-index:1;background:#e8eee8;padding:12px 16px;border-radius:10px;margin:18px 0;white-space:pre-wrap}#message.error{background:#f9e7e5;color:#852f2f}details{margin-top:20px}pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px}input[type=checkbox]{width:auto}button:focus-visible,input:focus-visible{outline:3px solid #bca457}@media(max-width:700px){.grid{grid-template-columns:1fr}}
+    </style>
+</head>
+<body><main>
+    <h1>내 서재 📚</h1>
+    <p class="intro">회원가입 → 로그인 → 작품 등록 → 서재 추가 </p>
+    <span class="pill" id="loginState">로그인 전</span>
+    <div id="message" role="status" aria-live="polite">회원가입 or 기존 계정으로 로그인</div>
+    <div class="grid">
+        <section class="card"><h2>1. 회원가입 / 로그인</h2>
+            <label for="email">이메일</label><input id="email" type="email" placeholder="Hongildong@example.com" autocomplete="username">
+            <label for="password">비밀번호 (8~64자)</label><input id="password" type="password" autocomplete="current-password">
+            <label for="nickname">닉네임 · 회원가입할 때만 필요</label><input id="nickname" maxlength="30" placeholder="홍길동">
+            <button id="signup">회원가입</button><button id="login">로그인</button><button id="logout" class="secondary">로그아웃</button>
+            <p class="small">1시간이 지나면 재로그인</p>
+        </section>
+        <section class="card"><h2>2. 작품 등록 / 검색</h2>
+            <label for="workTitle">작품 제목</label><input id="workTitle" maxlength="200" placeholder="전지적 독자 시점">
+            <label for="author">작가</label><input id="author" maxlength="100" placeholder="싱숑">
+            <button id="createWork">작품 등록</button>
+            <label for="keyword">제목 또는 작가 검색</label><input id="keyword" placeholder="검색어 없이 누르면 전체 목록">
+            <button id="search" class="secondary">작품 찾기</button><div id="works"></div>
+        </section>
+        <section class="card"><h2>3. 내 서재</h2>
+            <p class="small">서제에 추가</p>
+            <button id="loadShelf">내 서재 불러오기</button><div id="shelf"></div>
+        </section>
+        <section class="card"><h2>4. 독서기록 작성 / 수정</h2>
+            <p class="small" id="selectedWork">내 서재 ->‘이 작품에 기록 쓰기’</p>
+            <label for="recordTitle">기록 제목</label><input id="recordTitle" maxlength="200">
+            <label for="content">내용</label><textarea id="content" maxlength="10000"></textarea>
+            <label><input id="isPublic" type="checkbox"> 공개하기</label>
+            <button id="saveRecord">새 기록 저장</button><button id="resetRecord" class="secondary">수정 취소 / 새 기록</button>
+        </section>
+        <section class="card"><h2>5. 내 독서기록</h2><button id="loadRecords">내 기록 불러오기</button><div id="records"></div></section>
+        <section class="card"><h2>6. 공개 독서기록</h2><p class="small">로그인 없이도 공개 기록을 볼 수 있어요.</p><button id="loadPublic" class="secondary">공개 기록 불러오기</button><div id="publicRecords"></div></section>
+    </div>
+    <details><summary>마지막 서버 응답 보기</summary><pre id="response">아직 요청하지 않았어요.</pre></details>
+    <p class="small">목록은 최신 50개까지 표시합니다. 이 화면은 개발 중 기능 확인용입니다.</p>
+</main>
+<script>
+    'use strict';
+    const $ = id => document.getElementById(id);
+    let token = '', selectedWork = null, editingRecord = null;
+    const statuses = {READING:'읽는 중',COMPLETED:'완독',PAUSED:'묵히는 중',DROPPED:'하차'};
+    function notify(message,error=false){$('message').textContent=message;$('message').classList.toggle('error',error);}
+    function updateLogin(){ $('loginState').textContent=token?'로그인 완료':'로그인 전'; }
+    async function api(path,method='GET',body=null,auth=true){
+        if(location.protocol==='file:') throw Error('파일을 더블클릭해서 열지 말고 http://localhost:8080/reading-demo.html 로 접속해주세요.');
+        if(auth&&!token) throw Error('먼저 로그인해주세요.');
+        const headers={};if(body!==null)headers['Content-Type']='application/json';if(auth&&token)headers.Authorization='Bearer '+token;
+        let response;try{response=await fetch(path,{method,headers,body:body===null?undefined:JSON.stringify(body)});}catch(e){throw Error('서버에 연결되지 않았어요. IntelliJ에서 서버가 실행 중인지 확인해주세요.');}
+        const raw=await response.text();let data;try{data=raw?JSON.parse(raw):null;}catch(e){data=null;}
+        // 로그인 응답의 JWT는 출력하지 않습니다.
+        $('response').textContent=method+' '+path+'\nHTTP '+response.status+'\n'+(data?JSON.stringify(data.accessToken?{...data,accessToken:'(숨김)'}:data,null,2):raw||'(응답 본문 없음)');
+        if(!response.ok){if(response.status===401&&auth){token='';updateLogin();}throw Error((data&&data.message)||'요청 실패 (HTTP '+response.status+'). 서버 설정과 실행 로그를 확인해주세요.');}
+        if(raw&&!data)throw Error('JSON 대신 다른 응답을 받았어요. 서버 주소와 Security 설정을 확인해주세요.');
+        return data;
+    }
+    function bind(id,fn){$(id).addEventListener('click',()=>run($(id),fn));}
+    async function run(button,fn){button.disabled=true;try{await fn();}catch(e){notify(e.message,true);}finally{button.disabled=false;}}
+    function node(tag,text,cls){const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n;}
+    function action(parent,label,fn,cls='secondary'){const b=node('button',label,cls);b.addEventListener('click',()=>run(b,fn));parent.append(b);}
+    function renderList(target,result,draw){const root=$(target);root.replaceChildren();const items=result.content||[];if(!items.length)root.append(node('p','아직 항목이 없어요.','small'));items.forEach(item=>{const box=node('div',undefined,'item');draw(box,item);root.append(box);});if(result.totalElements>items.length)root.append(node('p','전체 '+result.totalElements+'개 중 최신 '+items.length+'개 표시','small'));}
+    function chooseWork(work){selectedWork=work;editingRecord=null;$('selectedWork').textContent='선택한 작품: '+work.title+' / '+work.author;$('recordTitle').value='';$('content').value='';$('isPublic').checked=false;$('isPublic').disabled=false;$('saveRecord').textContent='새 기록 저장';}
+    async function search(){const result=await api('/api/works?size=50&keyword='+encodeURIComponent($('keyword').value),'GET',null,false);renderList('works',result,(box,w)=>{box.append(node('strong',w.title),node('div',w.author,'small'));action(box,'서재에 추가',async()=>{await api('/api/shelf','POST',{workId:w.id,status:'READING'});await shelf();chooseWork(w);notify('서재에 추가했어요. 이제 독서기록을 작성할 수 있어요.');});});}
+    async function shelf(){const result=await api('/api/shelf?size=50');renderList('shelf',result,(box,item)=>{box.append(node('strong',item.work.title),node('div',item.work.author,'small'));const select=node('select');Object.entries(statuses).forEach(([value,label])=>{const option=node('option',label);option.value=value;select.append(option);});select.value=item.status;select.setAttribute('aria-label',item.work.title+' 독서 상태');box.append(select);action(box,'상태 저장',async()=>{await api('/api/shelf/'+item.id+'/status','PATCH',{status:select.value});notify('독서 상태를 변경했어요.');});action(box,'이 작품에 기록 쓰기',async()=>{chooseWork(item.work);$('recordTitle').focus();notify('작품을 선택했어요. 기록 제목과 내용을 입력하세요.');});action(box,'서재에서 삭제',async()=>{if(!confirm('서재에서 삭제할까요? 기존 독서기록은 남아요.'))return;await api('/api/shelf/'+item.id,'DELETE');if(selectedWork&&selectedWork.id===item.work.id){selectedWork=null;editingRecord=null;$('selectedWork').textContent='내 서재에서 작품을 다시 선택해주세요.';$('saveRecord').textContent='새 기록 저장';$('isPublic').disabled=false;}await shelf();notify('서재에서 삭제했어요.');},'danger');});}
+    async function records(){const result=await api('/api/records?size=50');renderList('records',result,(box,r)=>{box.append(node('strong',r.title),node('div',r.work.title+' · '+(r.isPublic?'공개':'비공개'),'small'),node('p',r.content));action(box,'수정',async()=>{selectedWork=r.work;editingRecord=r.id;$('selectedWork').textContent='수정 중: '+r.work.title;$('recordTitle').value=r.title;$('content').value=r.content;$('isPublic').checked=r.isPublic;$('isPublic').disabled=true;$('saveRecord').textContent='수정 저장';$('recordTitle').focus();notify('내용을 수정하고 ‘수정 저장’을 누르세요.');});action(box,r.isPublic?'비공개로 변경':'공개로 변경',async()=>{await api('/api/records/'+r.id+'/visibility','PATCH',{isPublic:!r.isPublic});await records();await publicRecords();notify('공개 설정을 변경했어요.');});action(box,'삭제',async()=>{if(!confirm('이 독서기록을 삭제할까요?'))return;await api('/api/records/'+r.id,'DELETE');if(editingRecord===r.id)chooseWork(r.work);await records();await publicRecords();notify('독서기록을 삭제했어요.');},'danger');});}
+    async function publicRecords(){const result=await api('/api/public/records?size=50','GET',null,false);renderList('publicRecords',result,(box,r)=>{box.append(node('strong',r.title),node('div',r.work.title+' · '+r.nickname,'small'),node('p',r.content));});}
+    bind('signup',async()=>{await api('/api/auth/signup','POST',{email:$('email').value,password:$('password').value,nickname:$('nickname').value},false);notify('회원가입 완료! 같은 이메일과 비밀번호로 로그인 버튼을 누르세요.');});
+    bind('login',async()=>{token='';updateLogin();$('shelf').replaceChildren();$('records').replaceChildren();selectedWork=null;editingRecord=null;$('selectedWork').textContent='내 서재에서 작품을 선택해주세요.';$('saveRecord').textContent='새 기록 저장';$('isPublic').disabled=false;const result=await api('/api/auth/login','POST',{email:$('email').value,password:$('password').value},false);token=result.accessToken;updateLogin();$('password').value='';notify('로그인 완료! 작품을 등록하거나 검색해보세요.');});
+    bind('logout',async()=>{token='';updateLogin();selectedWork=null;editingRecord=null;$('shelf').replaceChildren();$('records').replaceChildren();$('password').value='';$('recordTitle').value='';$('content').value='';$('isPublic').checked=false;$('isPublic').disabled=false;$('selectedWork').textContent='내 서재에서 작품을 선택해주세요.';$('saveRecord').textContent='새 기록 저장';notify('이 화면의 로그인 정보를 지웠어요.');});
+    bind('createWork',async()=>{const w=await api('/api/works','POST',{title:$('workTitle').value,author:$('author').value});$('keyword').value=w.title;await search();notify('작품 등록 완료! 검색 결과에서 ‘서재에 추가’를 누르세요.');});
+    bind('search',async()=>{await search();notify('작품 목록을 불러왔어요.');});
+    bind('loadShelf',async()=>{await shelf();notify('내 서재를 불러왔어요.');});
+    bind('loadRecords',async()=>{await records();notify('내 독서기록을 불러왔어요.');});
+    bind('loadPublic',async()=>{await publicRecords();notify('공개 기록을 불러왔어요.');});
+    bind('resetRecord',async()=>{if(selectedWork)chooseWork(selectedWork);notify('새 기록 작성 모드로 바꿨어요.');});
+    bind('saveRecord',async()=>{if(!selectedWork)throw Error('먼저 내 서재에서 ‘이 작품에 기록 쓰기’를 눌러주세요.');const body={title:$('recordTitle').value,content:$('content').value};const updating=editingRecord!==null;if(updating)await api('/api/records/'+editingRecord,'PUT',body);else await api('/api/records','POST',{...body,workId:selectedWork.id,isPublic:$('isPublic').checked});chooseWork(selectedWork);await records();await publicRecords();notify(updating?'독서기록을 수정했어요.':'독서기록을 저장했어요.');});
+    if(location.protocol==='file:')notify('이 파일을 프로젝트의 src/main/resources/static에 넣고, 서버 실행 후 http://localhost:8080/reading-demo.html 로 접속해주세요.',true);
+</script>
+</body></html>

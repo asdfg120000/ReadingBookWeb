@@ -76,6 +76,7 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(
                                 "/reading-demo.html",
+                                "/kakao-books.html",
                                 "/error"
                         ).permitAll()
 
